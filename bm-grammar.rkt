@@ -1,4 +1,4 @@
 #lang brag
 
 
-expr: OPEN ID COLON SIZE CLOSE
+bin: OPEN ID COLON SIZE CLOSE
