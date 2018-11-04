@@ -8,7 +8,7 @@
   (provide (rename-out (my-read read)))
   (provide (rename-out (my-read-syntax read-syntax)))
   (require "bm-grammar.rkt")
-  (provide bin id size)
+  (provide bin id size to-bin ->byte)
 
   (define lex
     (lexer
@@ -41,12 +41,24 @@
     (syntax-parse stx
       [(_ size) (datum->syntax stx (string->number (syntax->datum #'size)))]))
 
+  (define-syntax (to-bin stx)
+    (syntax-parse stx
+      [(_ acc)
+       #'(->byte acc)]
+
+      [(_ acc id ":" size r ...)
+       #'(let ([ret (cons (cons id size) acc)])
+           (to-bin ret r ...))]))
   (define-syntax (bin stx)
     (syntax-parse stx
-      [(bin "<<" id ":" size ">>")
-       #'(bytes id)])))
+      [(bin "<<" e ... ">>")
+       #'(to-bin '()  e ...)]))
+
+  (define (->byte xs)
+    xs))
 
 (require 'reader)
-(provide bin id size)
-(define x 42)
-(provide x)
+(provide bin id size to-bin ->byte)
+(define x 0)
+(define y 1)
+(provide x y)
