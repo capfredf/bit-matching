@@ -1,14 +1,14 @@
 #lang racket
 (provide (all-from-out racket))
 
-
 (module reader racket
   (require brag/support)
+  (require (for-syntax syntax/parse))
 
   (provide (rename-out (my-read read)))
   (provide (rename-out (my-read-syntax read-syntax)))
   (require "bm-grammar.rkt")
-  (provide bin)
+  (provide bin id size)
 
   (define lex
     (lexer
@@ -19,6 +19,7 @@
      [(:+ numeric) (token 'SIZE lexeme)]
      [any-char (token 'ID lexeme)]))
 
+  #;(parse (apply-lexer lex (open-input-string "<<x:20>>")))
   (define (tokenize ip)
     (apply-lexer lex ip))
 
@@ -32,8 +33,20 @@
         (printf "parsed : ~a\n" p)
         `(module mod bit-matching ,p))))
 
+  (define-syntax (id stx)
+    (syntax-parse stx
+      [(_ id) (datum->syntax stx (string->symbol (syntax->datum #'id)))]))
+
+  (define-syntax (size stx)
+    (syntax-parse stx
+      [(_ size) (datum->syntax stx (string->number (syntax->datum #'size)))]))
+
   (define-syntax (bin stx)
-    #'42))
+    (syntax-parse stx
+      [(bin "<<" id ":" size ">>")
+       #'(bytes id)])))
 
 (require 'reader)
-(provide bin)
+(provide bin id size)
+(define x 42)
+(provide x)

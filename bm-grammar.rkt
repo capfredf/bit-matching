@@ -1,4 +1,6 @@
 #lang brag
 
 
-bin: OPEN ID COLON SIZE CLOSE
+bin: OPEN id COLON size CLOSE
+id : ID
+size : SIZE
