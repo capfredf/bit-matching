@@ -12,16 +12,24 @@
 
   (define lex
     (lexer
-     ["\n" (lex input-port)]
+     [(:or "\n" " ") (lex input-port)]
      ["<<"         (token 'OPEN lexeme)]
      [">>"         (token 'CLOSE lexeme)]
      #;[(:: (:+ any-char) ":" (:+ any-char)) (token 'Expr lexeme)]
      [":"          (token 'COLON lexeme)]
-     [(:+ numeric) (token 'SIZE lexeme)]
-     [any-char (token 'ID lexeme)]))
+     ["("          "("]
+     [")"          ")"]
+     ["+"          "+"]
+     [(:+ numeric) (token 'NUMBER lexeme)]
+     [any-char lexeme]
+     ))
 
-  #;(parse (apply-lexer lex (open-input-string "<<x:20>>")))
+  #;(parse (apply-lexer lex (open-input-string "<<(+ 20 20):20 y:20>>")))
+  #;(apply-lexer lex (open-input-string "<<(+ 20 10):20 30:40>>"))
+
+  (parse (apply-lexer lex (open-input-string "<<(+ 20 10):20 30:40>>")))
   (define (tokenize ip)
+    (port-count-lines! ip)
     (apply-lexer lex ip))
 
   (define (my-read port)
@@ -56,9 +64,12 @@
        #'(to-bin '()  e ...)]))
 
   (define (->byte xs)
-    (for/fold ([r 0])
-              ([i xs])
-      (bitwise-ior (arithmetic-shift (car i) (cdr i)) r))))
+    xs
+    #;
+    (apply bytes (for/fold ([r '()]
+                            [s 0])
+                           ([i xs])
+                   (make-byte (bitwise-ior (arithmetic-shift (car i) (cdr i)) r))))))
 
 (require 'reader)
 (provide bin id size to-bin ->byte)
