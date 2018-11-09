@@ -15,6 +15,7 @@
      ["\n" (lex input-port)]
      ["<<"         (token 'OPEN lexeme)]
      [">>"         (token 'CLOSE lexeme)]
+     #;[(:: (:+ any-char) ":" (:+ any-char)) (token 'Expr lexeme)]
      [":"          (token 'COLON lexeme)]
      [(:+ numeric) (token 'SIZE lexeme)]
      [any-char (token 'ID lexeme)]))
@@ -55,7 +56,9 @@
        #'(to-bin '()  e ...)]))
 
   (define (->byte xs)
-    xs))
+    (for/fold ([r 0])
+              ([i xs])
+      (bitwise-ior (arithmetic-shift (car i) (cdr i)) r))))
 
 (require 'reader)
 (provide bin id size to-bin ->byte)
