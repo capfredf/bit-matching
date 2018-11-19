@@ -8,26 +8,30 @@
   (provide (rename-out (my-read read)))
   (provide (rename-out (my-read-syntax read-syntax)))
   (require "bm-grammar.rkt")
-  (provide bin id size to-bin ->byte)
+  (provide expr bin ->byte arg-expr)
 
   (define lex
     (lexer
      [(:or "\n" " ") (lex input-port)]
      ["<<"         (token 'OPEN lexeme)]
      [">>"         (token 'CLOSE lexeme)]
+     [","         (token 'SEP lexeme)]
      #;[(:: (:+ any-char) ":" (:+ any-char)) (token 'Expr lexeme)]
+     ;; [(from/to " " " ") (token 'EXPR lexeme)]
      [":"          (token 'COLON lexeme)]
-     ["("          "("]
-     [")"          ")"]
-     ["+"          "+"]
-     [(:+ numeric) (token 'NUMBER lexeme)]
-     [any-char lexeme]
+     ["+" (token 'OP '+)]
+     ["(" (token 'LPAREN lexeme)]
+     [")" (token 'RPAREN lexeme)]
+     [(:+ numeric) (token 'NUM (string->number lexeme))]
+     [any-char (token 'RACKET-CHAR lexeme)]
      ))
 
   #;(parse (apply-lexer lex (open-input-string "<<(+ 20 20):20 y:20>>")))
   #;(apply-lexer lex (open-input-string "<<(+ 20 10):20 30:40>>"))
-
-  (parse (apply-lexer lex (open-input-string "<<(+ 20 10):20 30:40>>")))
+  #;(apply-lexer lex (open-input-string "<<(+ 20 10):20 30:40>>"))
+  ;; (parse (apply-lexer lex (open-input-string "<<(+ 20 10):30, 40:30>>")))
+  #;
+  (parse (apply-lexer lex (open-input-string "<<(+ 20 10):30")))
   (define (tokenize ip)
     (port-count-lines! ip)
     (apply-lexer lex ip))
@@ -42,37 +46,34 @@
         (printf "parsed : ~a\n" p)
         `(module mod bit-matching ,p))))
 
-  (define-syntax (id stx)
+  (define-syntax (expr stx)
     (syntax-parse stx
-      [(_ id) (datum->syntax stx (string->symbol (syntax->datum #'id)))]))
+      [(_ (num n:number)) #'n]
+      [(_ "(" (op +) e1 e2 ")") #'(+ e1 e2)]))
 
-  (define-syntax (size stx)
+
+  (define-syntax (arg-expr stx)
     (syntax-parse stx
-      [(_ size) (datum->syntax stx (string->number (syntax->datum #'size)))]))
+      [(_ e1 ":" e2) #'(cons e1 e2)]))
 
-  (define-syntax (to-bin stx)
-    (syntax-parse stx
-      [(_ acc)
-       #'(->byte acc)]
-
-      [(_ acc id ":" size r ...)
-       #'(let ([ret (cons (cons id size) acc)])
-           (to-bin ret r ...))]))
   (define-syntax (bin stx)
     (syntax-parse stx
-      [(bin "<<" e ... ">>")
-       #'(to-bin '()  e ...)]))
+      [(bin "<<" e "," er ... ">>")
+       #'(->byte e er ...)]))
 
-  (define (->byte xs)
-    xs
-    #;
-    (apply bytes (for/fold ([r '()]
-                            [s 0])
-                           ([i xs])
-                   (make-byte (bitwise-ior (arithmetic-shift (car i) (cdr i)) r))))))
+  (define ->byte (λ xs
+                   (bytes (for/fold ([s 0])
+                                    ([i xs])
+                            (bitwise-and 255 (bitwise-ior (arithmetic-shift (car i) (cdr i)) s)))))))
 
 (require 'reader)
-(provide bin id size to-bin ->byte)
-(define x 0)
-(define y 1)
-(provide x y)
+(provide expr bin ->byte arg-expr)
+;; (define x 0)
+;; (define y 1)
+;; (provide x y)
+
+;; (expr (num 20))
+;; (expr "(" (op +) (expr (num 20)) (expr (num 10)) ")")
+;; (bin "<<" (arg-expr (expr "(" (op +) (expr (num 20)) (expr (num 10)) ")") ":" (expr (num 4))) ">>")
+(bin "<<" (arg-expr (expr "(" (op +) (expr (num 20)) (expr (num 10)) ")") ":" (expr (num 4))) "," (arg-expr (expr (num 5)) ":" (expr (num 4))) ">>")
+;; (char "a")(char "b")
