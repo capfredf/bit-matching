@@ -8,7 +8,8 @@
   (provide (rename-out (my-read read)))
   (provide (rename-out (my-read-syntax read-syntax)))
   (require "bm-grammar.rkt")
-  (provide expr bin ->byte arg-expr to-bin program num identifier)
+  
+  (provide ->byte)
 
   (define lex
     (lexer
@@ -47,43 +48,7 @@
         (printf "parsed : ~a\n" p)
         `(module mod bit-matching ,p))))
 
-  (define-syntax (identifier stx)
-    (syntax-parse stx
-      #;[(_ x) #'x]
-      [(_ x) #`#,(datum->syntax stx (string->symbol (syntax->datum #'x)))]))
-  (define-syntax (num stx)
-    (syntax-parse stx
-      [(_ n:number) #'n]))
-
-  (define-syntax (expr stx)
-    (syntax-parse stx #:literals (num identifier)
-                  [(_ (identifier x)) #'(identifier x)]
-                  [(_ (num n)) #'(num n)]
-                  [(_ "(" (op +) e1 e2 ")") #'(+ e1 e2)]
-                  [(_ "(" (op 'define) (identifier x:id) e2 ")") #'(define x e2)]))
-
-
-  (define-syntax (arg-expr stx)
-    (syntax-parse stx
-      [(_ e1 ":" e2) #'(cons e1 e2)]))
-
-  (define-syntax (to-bin stx)
-    (syntax-parse stx
-      [(_ acc e1)
-       #'(->byte (reverse (cons e1 acc)))]
-
-      [(_ acc e1 "," er ...)
-       #'(let ([ret (cons e1 acc)])
-           (to-bin ret er ...))]))
-
-  (define-syntax (bin stx)
-    (syntax-parse stx
-      [(bin "<<" e ... ">>")
-       #'(to-bin '() e ...)]))
-
-  (define-syntax (program stx)
-    (syntax-parse stx
-      [(program p ...) #'(begin p ...)]))
+  
 
   (define ->byte (λ (xs)
                    (bytes (for/fold ([s 0])
@@ -91,7 +56,7 @@
                             (bitwise-and 255 (bitwise-ior (arithmetic-shift (car i) (cdr i)) s)))))))
 
 (require 'reader)
-(provide expr bin ->byte arg-expr to-bin read read-syntax program num identifier define)
+;(provide expr bin ->byte arg-expr to-bin read read-syntax program num identifier define)
 ;; (define x 30)
 ;; ;; (define y 1)
 ;; ;; (provide x y)
