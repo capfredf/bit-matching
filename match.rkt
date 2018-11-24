@@ -28,65 +28,47 @@
            ...
            [else (error 'bit-match "no matching pattern for ~v" e)]))]))
 
-(define (extract n li)
-  (for/fold ([not-consumed 8]
-             [acc '()]
-             (idx 0)
-             #:result (reverse acc))
-            ([len li])
-    (let* ([not-consumed^ (max (- not-consumed len) 0)]
-           [val (bytes-ref n idx)]
-           [mask (arithmetic-shift (- (expt 2 len) 1) not-consumed^)])
 
-      (values (if (zero? not-consumed^) 8
-                  not-consumed^)
-              (cons (arithmetic-shift (bitwise-and val mask) (- not-consumed^))
-                    acc)
-              (if (equal? not-consumed^ 0) (add1 idx)
-                  idx)))))
-
-
-(define (extract2 bv lens)
+(define (extract bv lens)
+  ;; TODO check if the sum of lens are equal to 8 * size of bv
   (let loop ([not-consumed 8]
+             [curr-val #f]
              [idx 0]
-             [val (bytes-ref bv 0)]
+             [curr-res 0]
              [acc '()]
-             [tmp 0]
              [lens lens])
     (if (empty? lens) (reverse acc)
-        (let* ([move (if (< not-consumed (car lens)) not-consumed
-                         (- not-consumed (car lens)))]
-               [mask (arithmetic-shift (sub1 (expt 2 move)) move)]
-               [next (arithmetic-shift (bitwise-and val mask) (- move))])
-          (pretty-print (list idx next val mask (car lens) move (- not-consumed move) tmp))
-          (if (equal? (car lens) (- not-consumed move))
-              (loop (if (equal? not-consumed move) 8 move)
-                    (if (equal? not-consumed move) (add1 idx) idx)
-                    (if (and (equal? not-consumed move)
-                             (< (add1 idx ) (bytes-length bv)))
-                        (bytes-ref bv (add1 idx))
-                        (bitwise-and val (bitwise-not mask)))
-                    (append (list (bitwise-ior next (arithmetic-shift tmp (car lens)))) acc)
-                    0
-                    (cdr lens))
-              (loop (if (equal? not-consumed move) 8 move)
-                    (if (equal? not-consumed move) (add1 idx) idx)
-                    (if (and (equal? not-consumed move)
-                             (< (add1 idx) (bytes-length bv)))
-                        (bytes-ref bv (add1 idx))
-                        (bitwise-and val (bitwise-not mask)))
-                    acc
-                    next
-                    (cons (- (car lens) move) (cdr lens))))))))
+        (let ([curr-len (car lens)]
+              [curr-val (or curr-val (bytes-ref bv idx))])
+          (let* ([consumed (if (< not-consumed curr-len) not-consumed curr-len)]
+                 [move (- not-consumed consumed)]
+                 [mask (arithmetic-shift (sub1 (expt 2 consumed)) move)]
+                 [res (bitwise-ior (arithmetic-shift curr-res curr-len)
+                                   (arithmetic-shift (bitwise-and curr-val mask) (- move)))]
+                 [not-consumed^ (- not-consumed consumed)])
+            (let-values ([(res^ acc^ lens^) (if (equal? consumed curr-len)
+                                                (values 0 (cons res acc)
+                                                        (cdr lens))
+                                                (values res
+                                                        acc
+                                                        (cons (- curr-len consumed) (cdr lens))))])
+              (if (zero? not-consumed^)
+                  (loop 8 #f (add1 idx) res^ acc^
+                        lens^)
+                  (loop not-consumed^ (bitwise-and (bitwise-not mask) curr-val)
+                        idx res^ acc^
+                        lens^))))))))
 
-;; not-consume 4
-;; 1
-;; 0
-;; 8
-;;
-#;
-(extract2 (bytes 16) '(4 4))
-(extract2 (bytes 16 129) '(4 3 9)) ;; 1 0 1
+(check-equal? (extract (bytes 16) '(3 5)) '(0 16))
+(check-equal? (extract (bytes 16) '(4 4)) '(1 0))
+(check-equal? (extract (bytes 17) '(4 4)) '(1 1))
+(check-equal? (extract (bytes 1 16) '(4 4 8)) '(0 1 16))
+
+;; (bytes 4 16) ==> 0000 0001 0001 0000
+;; 4 9 3 ==> 0000 0001000010 000
+;; 4 4 5 3 ==> 0000 0001 000010 000
+(check-equal? (extract (bytes 1 16) '(4 9 3)) '(0 34 0))
+(check-equal? (extract (bytes 1 16) '(4 4 5 3)) '(0 1 2 0))
 ;; 9
 ;; len 1
 ;; len 8
