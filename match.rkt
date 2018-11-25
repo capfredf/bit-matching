@@ -9,6 +9,8 @@
     #:literals (quote cons)
     [pattern (bin (id n) ...)
              #:with test #'(λ (mch)
+                             (extract mch '(n ...))
+                             #;
                              (and (= (length '(id ...))
                                      (length (cdr mch)))
                                   (map car (cdr mch)))) ;; bit equal?
@@ -37,7 +39,8 @@
              [curr-res 0]
              [acc '()]
              [lens lens])
-    (if (empty? lens) (reverse acc)
+    (if (empty? lens) (if (equal? not-consumed 8) (reverse acc)
+                          #f)
         (let ([curr-len (car lens)]
               [curr-val (or curr-val (bytes-ref bv idx))])
           (let* ([consumed (if (< not-consumed curr-len) not-consumed curr-len)]
@@ -59,16 +62,25 @@
                         idx res^ acc^
                         lens^))))))))
 
-(check-equal? (extract (bytes 16) '(3 5)) '(0 16))
-(check-equal? (extract (bytes 16) '(4 4)) '(1 0))
-(check-equal? (extract (bytes 17) '(4 4)) '(1 1))
-(check-equal? (extract (bytes 1 16) '(4 4 8)) '(0 1 16))
+(module+ test
+  (check-equal? (extract (bytes 16) '(3 5)) '(0 16))
+  (check-equal? (extract (bytes 16) '(4 4)) '(1 0))
+  (check-equal? (extract (bytes 17) '(4 4)) '(1 1))
+  (check-equal? (extract (bytes 1 16) '(4 4 8)) '(0 1 16))
 
-;; (bytes 4 16) ==> 0000 0001 0001 0000
-;; 4 9 3 ==> 0000 0001000010 000
-;; 4 4 5 3 ==> 0000 0001 000010 000
-(check-equal? (extract (bytes 1 16) '(4 9 3)) '(0 34 0))
-(check-equal? (extract (bytes 1 16) '(4 4 5 3)) '(0 1 2 0))
+  ;; (bytes 4 16) ==> 0000 0001 0001 0000
+  ;; 4 9 3 ==> 0000 0001000010 000
+  ;; 4 4 5 3 ==> 0000 0001 000010 000
+  (check-equal? (extract (bytes 1 16) '(4 9 3)) '(0 34 0))
+  (check-equal? (extract (bytes 1 16) '(4 4 5 3)) '(0 1 2 0))
+  (check-equal? (bit-match (bytes 16)
+                           [(bin (y 4)) y]
+                           [(bin (y 3) (z 5)) (+ y z)])
+                16)
+  (check-equal? (bit-match (bytes 1 16)
+                           [(bin (y 4)) y]
+                           [(bin (y 4) (x 4) (z 8)) (+ y x z)])
+                17))
 ;; 9
 ;; len 1
 ;; len 8
@@ -101,9 +113,12 @@
 
 
 
-;; (bit-match '(bin (40 10) (200 60))
-;;   [(bin (y n)) y]
-;;   [(bin (y n) (z m)) (+ y z)])
+
+
+#;
+(bit-match '(bin (40 10) (200 60))
+  [(bin (y n)) y]
+  [(bin (y n) (z m)) (+ y z)])
 
 ;; (check-equal? (bit-match '(bin (40 10))
 ;;                          [(bin (y n)) y])
