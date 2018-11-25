@@ -62,7 +62,67 @@
                         idx res^ acc^
                         lens^))))))))
 
+
+(define ->byte (λ (xs)
+                   (apply bytes
+                          (for/fold ([s 0]
+                                     [acc '()]
+                                     [not-consumed 8]
+                                     #:result (reverse acc))
+                                    ([i xs])
+                            (define move (if (< (cdr i) not-consumed)
+                                             (- not-consumed (cdr i))
+                                             not-consumed))
+                            (let ([s^ (bitwise-and 255 (bitwise-ior (arithmetic-shift (car i) move) s))])
+                              (pretty-print move)
+                              (values (if (zero? move) 0 s^)
+                                      (if (zero? move) (cons s^ acc) acc)
+                                      (if (eq? move 0) 8 move)))))))
+
+(define (->bytes xs)
+  (apply bytes
+         (let loop ([s 0]
+                    [acc '()]
+                    [not-consumed 8]
+                    [xs xs])
+           (if (empty? xs) (reverse acc) 
+               (let ([i (car xs)])
+                 
+
+                 (define consumed (if (< (cdr i) not-consumed)
+                                      (cdr i)
+                                      not-consumed))
+
+                 (define move
+                   (- not-consumed consumed))
+
+                 (define mask (sub1 (expt 2 (- (cdr i) consumed))))
+                 (define rem-length (- (cdr i) consumed))
+                 (define mask1 (arithmetic-shift (sub1 (expt 2 consumed)) rem-length))
+                 (define val (arithmetic-shift (bitwise-and (car i) mask1) (- rem-length)))
+                 (let ([s^ (bitwise-and 255 (bitwise-ior (arithmetic-shift val
+                                                                           move) s))])
+                   (loop (if (zero? move) 0 s^)
+                         (if (zero? move) (cons s^ acc) acc)
+                         (if (zero? move) 8 move)
+                         (if (= (cdr i) consumed)
+                             (cdr xs)
+                             (cons (cons (bitwise-and (car i) mask) rem-length)
+                                   (cdr xs))))))))))
+
+
+
+(define (zip xs ys)
+  (map cons xs ys))
+
 (module+ test
+  (check-equal? (->bytes (zip '(0 4 20) '(3 5 8))) (bytes 4 20))
+  (check-equal? (->bytes (zip '(0 32 12) '(4 8 4))) (bytes 2 12))
+  ;(check-equal? (->bytes (zip '(0 32 12) '(4 8 4))) (bytes 2 12))
+  (check-equal? (->bytes '((0 . 3) (16 . 5))) (bytes 16))
+  (check-equal? (->bytes (zip '(0 1 16) '(4 4 8))) (bytes 1 16))
+  (check-equal? (->bytes (zip '(0 34 0) '(4 9 3))) (bytes 1 16))
+  
   (check-equal? (extract (bytes 16) '(3 5)) '(0 16))
   (check-equal? (extract (bytes 16) '(4 4)) '(1 0))
   (check-equal? (extract (bytes 17) '(4 4)) '(1 1))
