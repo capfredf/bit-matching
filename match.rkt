@@ -3,19 +3,41 @@
 (require rackunit
          (for-syntax syntax/parse))
 
+
+(define (bindings-match bvs ids)
+  (for/and ([bv bvs]
+            [bv-idx (length bvs)])
+    (let ([v (hash-ref ids bv-idx)])
+      (if v (= v bv) #t))))
+
+
+
 (begin-for-syntax
+  
   (define-syntax-class pat
     #:attributes ((vars 1) (test 0))
     #:literals (quote cons)
     [pattern (bin (id n) ...)
              #:with test #'(λ (mch)
-                             (extract mch '(n ...))
+                             (let ([Mextract (extract mch '(n ...))])
+                               (and Mextract
+                                    (bindings-match Mextract
+                                                    (for/hash ([ident '(id ...)]
+                                                               [i (length '(id ...))])
+                                                      
+                                                      (if (identifier-binding #'ident)
+                                                          (values i ident)
+                                                          (values i #f))))
+                                    Mextract
+                                    ))
                              #;
                              (and (= (length '(id ...))
                                      (length (cdr mch)))
                                   (map car (cdr mch)))) ;; bit equal?
              #:with (vars ...) #'(id ...)]
     ))
+
+
 
 (define-syntax (bit-match stx)
   (syntax-parse stx
@@ -29,6 +51,8 @@
                                 rhs))]
            ...
            [else (error 'bit-match "no matching pattern for ~v" e)]))]))
+
+
 
 
 (define (extract bv lens)
@@ -61,6 +85,11 @@
                   (loop not-consumed^ (bitwise-and (bitwise-not mask) curr-val)
                         idx res^ acc^
                         lens^))))))))
+
+
+(define y 1)
+(bit-match (bytes 16)
+           ((bin (y 3) (z 5)) (+ y z)))
 
 
 (define ->byte (λ (xs)
