@@ -1,59 +1,80 @@
 #lang racket
 
 (require rackunit
-         (for-syntax syntax/parse))
+         racket/pretty
+         (for-syntax syntax/parse
+                     racket/pretty))
 
-(require racket/pretty)
+
 (define (bindings-match bvs ids)
   (displayln ids)
   (for/and ([bv bvs]
-            [bv-idx (length bvs)])
+            [bv-idx (sub1 (length bvs))])
     (let ([v (hash-ref ids bv-idx)])
       #;(pretty-print (list v bv bv-idx))
       (if v (= v bv) #t))))
 
-(require racket/pretty)
 
-(define-syntax (vars->hash stx)
+
+#;(define-syntax (vars->hash stx)
   (syntax-parse stx
     [(_ n h e) #'(if (and (symbol? e) (not (identifier? e)))
                    h
                    (hash-set h n #'e))]
     
     [(_ n h e1 e2 ...)
-     
-     
      #'(if (and (symbol? e1) (not (identifier? e1)))
            (vars->hash (add1 n) h e2 ...)
            (vars->hash (add1 n) (hash-set h n #'e1) e2 ...))]))
 
-#;(define (hasherize ids)
+(define-for-syntax (hasherize ids)
     (for/hash ([ident ids]
                [i (length ids)])
-      (pretty-print (list ident i))
+      #;(pretty-print (list ident i))
       (if (let ([b (identifier-binding ident)])
-            (begin (printf "id-binding ~v\n" b)
+            (begin #;(printf "id-binding ~v\n" b)
                    b))
           (values i ident)
           (values i #f))))
+
+#;#;(define x 5)
+(identifier-binding #'x)
+
+(define-for-syntax (bound-vars/acc stx)
+  (syntax-parse stx
+    [(n e) (if (identifier-binding #'e)
+               #`(list (cons n e))
+               #`empty)]
+    [(n e1 e2 ...) (if (identifier-binding #'e1)
+                       #`(cons (cons n e1) #,(bound-vars/acc #`(#,(add1 (syntax->datum #'n)) e2 ...)))
+                       #`#,(bound-vars/acc #`(#,(add1 (syntax->datum #'n)) e2 ...)))]))
+
+
+
 
 (begin-for-syntax
   (define-syntax-class pat
     #:attributes ((vars 1) (test 0))
     #:literals (quote cons)
     [pattern (bin (id n) ...)
-             #:with test #'(λ (mch)
+             #:with test (begin
+                           (define bound-ids (bound-vars/acc #'(0 id ...)))
+                           #;(printf "bound-ids: ~v\n" bound-ids)
+                           #`(λ (mch)
+                               (printf "bound-ids: ~v\n" #,bound-ids)
+                               #;(define bound-ids (hasherize ))
                              (let ([Mextract (extract mch '(n ...))])
                                (and Mextract
                                     ;(displayln Mextract)
                                     (bindings-match Mextract
-                                                    (vars->hash 0 (make-immutable-hash) id ...))
+                                                    (make-hash #,bound-ids)
+                                                    #;(vars->hash 0 (make-immutable-hash) id ...))
                                     Mextract
                                     ))
                              #;
                              (and (= (length '(id ...))
                                      (length (cdr mch)))
-                                  (map car (cdr mch)))) ;; bit equal?
+                                  (map car (cdr mch))))) ;; bit equal?
              #:with (vars ...) #'(id ...)]
     ))
 
@@ -62,6 +83,12 @@
 (define-syntax (bit-match stx)
   (syntax-parse stx
     [(_ e [p:pat rhs] ...)
+
+     ;; (bin (y 3) (z 5))
+     ;; -->
+     ;; '(y z)
+     #;(define p^ (map car (cdr (syntax->list #'p))))
+     
      #'(let ([mch e])
          (cond
            [(p.test mch) => (λ (result)
@@ -83,37 +110,38 @@
              [curr-res 0]
              [acc '()]
              [lens lens])
-    (if (empty? lens) (if (equal? not-consumed 8) (reverse acc)
-                          #f)
-        
-        (let* ([curr-len      (car lens)]
-               [curr-val      (or curr-val (bytes-ref bv idx))]
-               [consumed      (if (< not-consumed curr-len) not-consumed curr-len)]
-               [move          (- not-consumed consumed)]
-               [mask          (arithmetic-shift (sub1 (expt 2 consumed)) move)]
-               [res           (bitwise-ior (arithmetic-shift curr-res curr-len)
-                                           (arithmetic-shift (bitwise-and curr-val mask) (- move)))]
-               [not-consumed^ (- not-consumed consumed)])
-          (let-values ([(res^ acc^ lens^)
-                        (if (equal? consumed curr-len)
-                            (values 0
-                                    (cons res acc)
-                                    (cdr lens))
-                            (values res
-                                    acc
-                                    (cons (- curr-len consumed) (cdr lens))))])
+    (cond
+      ((and (empty? lens) (= not-consumed 8)) (reverse acc))
+      ((empty? lens) #f)
+      (else (let* ([curr-len      (car lens)]
+                   [curr-val      (or curr-val (bytes-ref bv idx))]
+                   [consumed      (if (< not-consumed curr-len) not-consumed curr-len)]
+                   [move          (- not-consumed consumed)]
+                   [mask          (arithmetic-shift (sub1 (expt 2 consumed)) move)]
+                   [res           (bitwise-ior (arithmetic-shift curr-res curr-len)
+                                               (arithmetic-shift (bitwise-and curr-val mask) (- move)))]
+                   [not-consumed^ (- not-consumed consumed)])
+              (let-values ([(res^ acc^ lens^)
+                            (if (equal? consumed curr-len)
+                                (values 0
+                                        (cons res acc)
+                                        (cdr lens))
+                                (values res
+                                        acc
+                                        (cons (- curr-len consumed) (cdr lens))))])
             
-            (if (zero? not-consumed^)
-                (loop 8 #f (add1 idx) res^ acc^
-                      lens^)
-                (loop not-consumed^ (bitwise-and (bitwise-not mask) curr-val)
-                      idx res^ acc^
-                      lens^)))))))
+                (if (zero? not-consumed^)
+                    (loop 8 #f (add1 idx) res^ acc^
+                          lens^)
+                    (loop not-consumed^ (bitwise-and (bitwise-not mask) curr-val)
+                          idx res^ acc^
+                          lens^))))))))
 
 
 (define y 1)
 (bit-match (bytes 16)
-           ((bin (y 3) (z 5)) (+ y z)))
+           ((bin (y 3) (z 5)) #;y
+                                (+ y z)))
 
 
 (define ->byte (λ (xs)
@@ -130,7 +158,7 @@
                               (pretty-print move)
                               (values (if (zero? move) 0 s^)
                                       (if (zero? move) (cons s^ acc) acc)
-                                      (if (eq? move 0) 8 move)))))))
+                                      (if (zero? move) 8 move)))))))
 
 (define (->bytes xs)
   (apply bytes
