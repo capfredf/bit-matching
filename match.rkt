@@ -3,17 +3,41 @@
 (require rackunit
          (for-syntax syntax/parse))
 
-
+(require racket/pretty)
 (define (bindings-match bvs ids)
+  (displayln ids)
   (for/and ([bv bvs]
             [bv-idx (length bvs)])
     (let ([v (hash-ref ids bv-idx)])
+      #;(pretty-print (list v bv bv-idx))
       (if v (= v bv) #t))))
 
+(require racket/pretty)
 
+(define-syntax (vars->hash stx)
+  (syntax-parse stx
+    [(_ n h e) #'(if (and (symbol? e) (not (identifier? e)))
+                   h
+                   (hash-set h n #'e))]
+    
+    [(_ n h e1 e2 ...)
+     
+     
+     #'(if (and (symbol? e1) (not (identifier? e1)))
+           (vars->hash (add1 n) h e2 ...)
+           (vars->hash (add1 n) (hash-set h n #'e1) e2 ...))]))
+
+#;(define (hasherize ids)
+    (for/hash ([ident ids]
+               [i (length ids)])
+      (pretty-print (list ident i))
+      (if (let ([b (identifier-binding ident)])
+            (begin (printf "id-binding ~v\n" b)
+                   b))
+          (values i ident)
+          (values i #f))))
 
 (begin-for-syntax
-  
   (define-syntax-class pat
     #:attributes ((vars 1) (test 0))
     #:literals (quote cons)
@@ -21,13 +45,9 @@
              #:with test #'(λ (mch)
                              (let ([Mextract (extract mch '(n ...))])
                                (and Mextract
+                                    ;(displayln Mextract)
                                     (bindings-match Mextract
-                                                    (for/hash ([ident '(id ...)]
-                                                               [i (length '(id ...))])
-                                                      
-                                                      (if (identifier-binding #'ident)
-                                                          (values i ident)
-                                                          (values i #f))))
+                                                    (vars->hash 0 (make-immutable-hash) id ...))
                                     Mextract
                                     ))
                              #;
@@ -65,26 +85,30 @@
              [lens lens])
     (if (empty? lens) (if (equal? not-consumed 8) (reverse acc)
                           #f)
-        (let ([curr-len (car lens)]
-              [curr-val (or curr-val (bytes-ref bv idx))])
-          (let* ([consumed (if (< not-consumed curr-len) not-consumed curr-len)]
-                 [move (- not-consumed consumed)]
-                 [mask (arithmetic-shift (sub1 (expt 2 consumed)) move)]
-                 [res (bitwise-ior (arithmetic-shift curr-res curr-len)
-                                   (arithmetic-shift (bitwise-and curr-val mask) (- move)))]
-                 [not-consumed^ (- not-consumed consumed)])
-            (let-values ([(res^ acc^ lens^) (if (equal? consumed curr-len)
-                                                (values 0 (cons res acc)
-                                                        (cdr lens))
-                                                (values res
-                                                        acc
-                                                        (cons (- curr-len consumed) (cdr lens))))])
-              (if (zero? not-consumed^)
-                  (loop 8 #f (add1 idx) res^ acc^
-                        lens^)
-                  (loop not-consumed^ (bitwise-and (bitwise-not mask) curr-val)
-                        idx res^ acc^
-                        lens^))))))))
+        
+        (let* ([curr-len      (car lens)]
+               [curr-val      (or curr-val (bytes-ref bv idx))]
+               [consumed      (if (< not-consumed curr-len) not-consumed curr-len)]
+               [move          (- not-consumed consumed)]
+               [mask          (arithmetic-shift (sub1 (expt 2 consumed)) move)]
+               [res           (bitwise-ior (arithmetic-shift curr-res curr-len)
+                                           (arithmetic-shift (bitwise-and curr-val mask) (- move)))]
+               [not-consumed^ (- not-consumed consumed)])
+          (let-values ([(res^ acc^ lens^)
+                        (if (equal? consumed curr-len)
+                            (values 0
+                                    (cons res acc)
+                                    (cdr lens))
+                            (values res
+                                    acc
+                                    (cons (- curr-len consumed) (cdr lens))))])
+            
+            (if (zero? not-consumed^)
+                (loop 8 #f (add1 idx) res^ acc^
+                      lens^)
+                (loop not-consumed^ (bitwise-and (bitwise-not mask) curr-val)
+                      idx res^ acc^
+                      lens^)))))))
 
 
 (define y 1)
@@ -143,7 +167,7 @@
 
 (define (zip xs ys)
   (map cons xs ys))
-
+#;
 (module+ test
   (check-equal? (->bytes (zip '(0 4 20) '(3 5 8))) (bytes 4 20))
   (check-equal? (->bytes (zip '(0 32 12) '(4 8 4))) (bytes 2 12))
