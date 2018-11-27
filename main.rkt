@@ -4,12 +4,12 @@
 (module reader racket
   (require brag/support)
   (require (for-syntax syntax/parse))
-
   (provide (rename-out (my-read read)))
   (provide (rename-out (my-read-syntax read-syntax)))
   (require "bm-grammar.rkt")
-  
-  (provide ->byte)
+  (require "match.rkt")
+
+  (provide ->bytes bit-match)
 
   (define lex
     (lexer
@@ -39,23 +39,24 @@
     (apply-lexer lex ip))
 
   (define (my-read port)
-    `(module mod bit-matching ,(parse (tokenize port))))
+    `(module mod bit-matching ,@(my-read-syntax port)))
 
   (define (my-read-syntax source-name port)
+    (let ([x (let loop ()
+               (let ([res (read-syntax source-name port)])
+                 (if (eof-object? res) '()
+                     (cons res
+                           (loop)))))])
+      `(module mod bit-matching ,@x))
+    #;
     (let ((t (tokenize port)))
       (printf "tokens : ~a\n" t)
       (let ((p (parse t)))
         (printf "parsed : ~a\n" p)
-        `(module mod bit-matching ,p))))
-
-  
-
-  (define ->byte (λ (xs)
-                   (bytes (for/fold ([s 0])
-                                    ([i xs])
-                            (bitwise-and 255 (bitwise-ior (arithmetic-shift (car i) (cdr i)) s)))))))
+        `(module mod bit-matching ,p)))))
 
 (require 'reader)
+(provide ->bytes bit-match)
 ;(provide expr bin ->byte arg-expr to-bin read read-syntax program num identifier define)
 ;; (define x 30)
 ;; ;; (define y 1)
