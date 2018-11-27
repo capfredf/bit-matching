@@ -5,12 +5,12 @@
          (for-syntax syntax/parse
                      racket/pretty))
 
+(provide bit-match ->bytes)
 
 (define (bindings-match bvs ids)
-  (displayln ids)
   (for/and ([bv bvs]
             [bv-idx (sub1 (length bvs))])
-    (let ([v (hash-ref ids bv-idx)])
+    (let ([v (hash-ref ids bv-idx #f)])
       #;(pretty-print (list v bv bv-idx))
       (if v (= v bv) #t))))
 
@@ -21,7 +21,7 @@
     [(_ n h e) #'(if (and (symbol? e) (not (identifier? e)))
                    h
                    (hash-set h n #'e))]
-    
+
     [(_ n h e1 e2 ...)
      #'(if (and (symbol? e1) (not (identifier? e1)))
            (vars->hash (add1 n) h e2 ...)
@@ -61,7 +61,6 @@
                            (define bound-ids (bound-vars/acc #'(0 id ...)))
                            #;(printf "bound-ids: ~v\n" bound-ids)
                            #`(λ (mch)
-                               (printf "bound-ids: ~v\n" #,bound-ids)
                                #;(define bound-ids (hasherize ))
                              (let ([Mextract (extract mch '(n ...))])
                                (and Mextract
@@ -88,7 +87,7 @@
      ;; -->
      ;; '(y z)
      #;(define p^ (map car (cdr (syntax->list #'p))))
-     
+
      #'(let ([mch e])
          (cond
            [(p.test mch) => (λ (result)
@@ -129,7 +128,7 @@
                                 (values res
                                         acc
                                         (cons (- curr-len consumed) (cdr lens))))])
-            
+
                 (if (zero? not-consumed^)
                     (loop 8 #f (add1 idx) res^ acc^
                           lens^)
@@ -138,7 +137,9 @@
                           lens^))))))))
 
 
+#;
 (define y 1)
+#;
 (bit-match (bytes 16)
            ((bin (y 3) (z 5)) #;y
                                 (+ y z)))
@@ -155,7 +156,6 @@
                                              (- not-consumed (cdr i))
                                              not-consumed))
                             (let ([s^ (bitwise-and 255 (bitwise-ior (arithmetic-shift (car i) move) s))])
-                              (pretty-print move)
                               (values (if (zero? move) 0 s^)
                                       (if (zero? move) (cons s^ acc) acc)
                                       (if (zero? move) 8 move)))))))
@@ -166,9 +166,9 @@
                     [acc '()]
                     [not-consumed 8]
                     [xs xs])
-           (if (empty? xs) (reverse acc) 
+           (if (empty? xs) (reverse acc)
                (let ([i (car xs)])
-                 
+
 
                  (define consumed (if (< (cdr i) not-consumed)
                                       (cdr i)
@@ -203,7 +203,7 @@
   (check-equal? (->bytes '((0 . 3) (16 . 5))) (bytes 16))
   (check-equal? (->bytes (zip '(0 1 16) '(4 4 8))) (bytes 1 16))
   (check-equal? (->bytes (zip '(0 34 0) '(4 9 3))) (bytes 1 16))
-  
+
   (check-equal? (extract (bytes 16) '(3 5)) '(0 16))
   (check-equal? (extract (bytes 16) '(4 4)) '(1 0))
   (check-equal? (extract (bytes 17) '(4 4)) '(1 1))
