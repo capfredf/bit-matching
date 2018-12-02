@@ -8,47 +8,26 @@
 (provide bit-match ->bytes)
 
 (define (bindings-match bvs ids)
-  (for/and ([bv bvs]
-            [bv-idx (sub1 (length bvs))])
-    (let ([v (hash-ref ids bv-idx #f)])
-      #;(pretty-print (list v bv bv-idx))
-      (if v (= v bv) #t))))
+  (let/cc k (let ([Mls (for/list ([bv bvs]
+                                  [bv-idx (length bvs)])
+                         (let ([v (hash-ref ids bv-idx #f)])
+                           (if v (if (= (cdr v) bv) v (k #f)) (cons 'IDENT bv))))])
+              (map cdr (filter (lambda (p)
+                                 (eqv? (car p) 'IDENT))
+                               Mls)))))
 
-
-
-#;(define-syntax (vars->hash stx)
-  (syntax-parse stx
-    [(_ n h e) #'(if (and (symbol? e) (not (identifier? e)))
-                   h
-                   (hash-set h n #'e))]
-
-    [(_ n h e1 e2 ...)
-     #'(if (and (symbol? e1) (not (identifier? e1)))
-           (vars->hash (add1 n) h e2 ...)
-           (vars->hash (add1 n) (hash-set h n #'e1) e2 ...))]))
-
-(define-for-syntax (hasherize ids)
-    (for/hash ([ident ids]
-               [i (length ids)])
-      #;(pretty-print (list ident i))
-      (if (let ([b (identifier-binding ident)])
-            (begin #;(printf "id-binding ~v\n" b)
-                   b))
-          (values i ident)
-          (values i #f))))
-
-#;#;(define x 5)
-(identifier-binding #'x)
 
 (define-for-syntax (bound-vars/acc stx)
   (syntax-parse stx
     [(n e:id) (if (identifier-binding #'e)
-               #`(list (cons n e))
+               #`(list (cons n (cons 'IDENT e)))
                #`empty)]
-    [(n e:number) #`(list (cons n e))]
-    [(n e1:number e2 ...)     #`(cons (cons n e1) #,(bound-vars/acc #`(#,(add1 (syntax->datum #'n)) e2 ...)))]
+    [(n e:number) #`(list  (cons n (cons 'NUM e)))]
+    [(n e1:number e2 ...)  #`(cons (cons n (cons 'NUM e1))
+                                   #,(bound-vars/acc #`(#,(add1 (syntax->datum #'n)) e2 ...)))]
     [(n e1:id e2 ...) (if (identifier-binding #'e1)
-                       #`(cons (cons n e1) #,(bound-vars/acc #`(#,(add1 (syntax->datum #'n)) e2 ...)))
+                       #`(cons (cons n (cons 'IDENT e1))
+                               #,(bound-vars/acc #`(#,(add1 (syntax->datum #'n)) e2 ...)))
                        #`#,(bound-vars/acc #`(#,(add1 (syntax->datum #'n)) e2 ...)))]))
 
 
@@ -60,37 +39,63 @@
     #:literals (quote cons)
     [pattern (bin (id n) ...)
              #:with test (begin
-                           (define bound-ids (bound-vars/acc #'(0 id ...)))
+                           (define triples (bound-vars/acc #'(0 id ...)))
+                           
                            #`(λ (mch)
                                (let ([Mextract (extract mch '(n ...))])
                                  (and Mextract (bindings-match Mextract
-                                                               (make-hash #,bound-ids)) Mextract
-                                                                                        ))))
-             #:with (vars ...) #`#,(filter (λ (n)
-                                             (not (number? (syntax->datum n))))
+                                                               (make-hash #,triples))))))
+             #:with (vars ...) #`#,(filter (compose not number? syntax->datum)
                                            (syntax->list #'(id ...)))]
     ))
 
 
+(require (for-syntax racket/list))
 
 (define-syntax (bit-match stx)
   (syntax-parse stx
-    [(_ e [p:pat rhs] ...)
+    [(_ e) (raise-syntax-error 'bit-match "no matching pattern for:" #'e)]
 
-     ;; (bin (y 3) (z 5))
-     ;; -->
-     ;; '(y z)
-     #;(define p^ (map car (cdr (syntax->list #'p))))
+    [(_ e [p:pat rhs])  
+     (with-syntax ([temp (if (empty? (syntax->datum #'(p.vars ...)))
+                             #'(λ (_) rhs)
+                             #'(λ (result)
+                                 (let-values
+                                     ([(p.vars ...)
+                                       (apply values result)])
+                                   rhs)))])
+                          #'(let ([mch e])
+                              (cond
+                                [(p.test mch) => temp]
+                                [else (raise-syntax-error 'bit-match "no matching pattern ~v" #'e)])))]
 
-     #'(let ([mch e])
-         (cond
-           [(p.test mch) => (λ (result)
-                              (let-values
-                                  ([(p.vars ...)
-                                    (apply values result)])
-                                rhs))]
-           ...
-           [else (error 'bit-match "no matching pattern for ~v" e)]))]))
+    [(_ e [p1:pat rhs1] more) 
+     (with-syntax ([temp (if (empty? '(p1.vars ...))
+                             #'(λ (_) rhs1)
+                             #'(λ (result)
+                                 (let-values
+                                     ([(p1.vars ...)
+                                       (apply values result)])
+                                   rhs1)))])
+       #'(let ([mch e])
+           (cond
+             [(p1.test mch) => temp]
+             [else (bit-match e more)])))]
+
+    #;[(_ e [p:pat rhs] ...)
+     (let ([temp (if (empty? '(p.vars ...))
+                     #'rhs
+                     #f)])
+       #'(let ([mch e])
+           (cond
+             [(p.test mch) => (λ (result)
+                                (let-values
+                                    ([(p.vars ...)
+                                      (apply values result)])
+                                  rhs))]
+             ...
+             [else (error 'bit-match "no matching pattern for ~v" e)])))
+     ]))
 
 
 
@@ -190,12 +195,13 @@
   (map cons xs ys))
 
 (module+ test
+
   (check-equal? (bit-match (->bytes '((16 . 8)))
-                           ((bin (0 3) (1 5)) "dogs"))
+                           ((bin (0 3) (16 5)) "dogs"))
                 "dogs")
-  (check-equal? (bit-match (->bytes 16)
+  (check-equal? (bit-match (bytes 16)
                            ((bin (1 3) (1 5)) "dogs")
-                           ((bin (0 3) (1 5)) "cats"))
+                           ((bin (0 3) (16 5)) "cats"))
                 "cats")
   (check-equal? (->bytes (zip '(0 4 20) '(3 5 8))) (bytes 4 20))
   (check-equal? (->bytes (zip '(0 32 12) '(4 8 4))) (bytes 2 12))
@@ -282,3 +288,31 @@
 ;
 ;(bit-match `(bin ,z 10)
 ;  [(bin x n) (begi x n)])
+
+
+
+
+#|
+#;(define-syntax (vars->hash stx)
+  (syntax-parse stx
+    [(_ n h e) #'(if (and (symbol? e) (not (identifier? e)))
+                   h
+                   (hash-set h n #'e))]
+
+    [(_ n h e1 e2 ...)
+     #'(if (and (symbol? e1) (not (identifier? e1)))
+           (vars->hash (add1 n) h e2 ...)
+           (vars->hash (add1 n) (hash-set h n #'e1) e2 ...))]))
+
+(define-for-syntax (hasherize ids)
+    (for/hash ([ident ids]
+               [i (length ids)])
+      #;(pretty-print (list ident i))
+      (if (let ([b (identifier-binding ident)])
+            (begin #;(printf "id-binding ~v\n" b)
+                   b))
+          (values i ident)
+          (values i #f))))
+
+#;#;(define x 5)
+(identifier-binding #'x)|#
