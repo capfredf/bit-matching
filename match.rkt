@@ -54,48 +54,19 @@
 
 (define-syntax (bit-match stx)
   (syntax-parse stx
-    [(_ e) (raise-syntax-error 'bit-match "no matching pattern for:" #'e)]
-
-    [(_ e [p:pat rhs])  
-     (with-syntax ([temp (if (empty? (syntax->datum #'(p.vars ...)))
+    [(_ e) #'(raise-syntax-error 'bit-match "no matching pattern for:" #'e)]
+    [(_ e [p:pat rhs] more ...) 
+     (with-syntax ([rhs^ (if (empty? '(p.vars ...))
                              #'(λ (_) rhs)
                              #'(λ (result)
                                  (let-values
                                      ([(p.vars ...)
                                        (apply values result)])
                                    rhs)))])
-                          #'(let ([mch e])
-                              (cond
-                                [(p.test mch) => temp]
-                                [else (raise-syntax-error 'bit-match "no matching pattern ~v" #'e)])))]
-
-    [(_ e [p1:pat rhs1] more) 
-     (with-syntax ([temp (if (empty? '(p1.vars ...))
-                             #'(λ (_) rhs1)
-                             #'(λ (result)
-                                 (let-values
-                                     ([(p1.vars ...)
-                                       (apply values result)])
-                                   rhs1)))])
        #'(let ([mch e])
            (cond
-             [(p1.test mch) => temp]
-             [else (bit-match e more)])))]
-
-    #;[(_ e [p:pat rhs] ...)
-     (let ([temp (if (empty? '(p.vars ...))
-                     #'rhs
-                     #f)])
-       #'(let ([mch e])
-           (cond
-             [(p.test mch) => (λ (result)
-                                (let-values
-                                    ([(p.vars ...)
-                                      (apply values result)])
-                                  rhs))]
-             ...
-             [else (error 'bit-match "no matching pattern for ~v" e)])))
-     ]))
+             [(p.test mch) => rhs^]
+             [else (bit-match e more ...)])))]))
 
 
 
