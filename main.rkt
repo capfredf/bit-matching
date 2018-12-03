@@ -2,61 +2,58 @@
 (provide (all-from-out racket))
 
 (module reader racket
-  (require brag/support)
   (require (for-syntax syntax/parse))
   (provide (rename-out (my-read read)))
   (provide (rename-out (my-read-syntax read-syntax)))
-  (require "bm-grammar.rkt")
   (require "match.rkt")
+  (provide bit-match ->bytes bin)
 
-  (provide ->bytes bit-match)
 
-  (define lex
-    (lexer
-     [(:or "\n" " ") (lex input-port)]
-     ["<<"         (token 'OPEN lexeme)]
-     [">>"         (token 'CLOSE lexeme)]
-     [","         (token 'SEP lexeme)]
-     #;[(:: (:+ any-char) ":" (:+ any-char)) (token 'Expr lexeme)]
-     ;; [(from/to " " " ") (token 'EXPR lexeme)]
-     [":"          (token 'COLON lexeme)]
-     ["+" (token 'OP #'+)]
-     ["define" (token 'OP 'define)]
-     ["(" (token 'LPAREN lexeme)]
-     [")" (token 'RPAREN lexeme)]
-     [(:+ numeric) (token 'NUM (string->number lexeme))]
-     [(:+ (char-range #\A #\~)) (token 'ID lexeme)]
-     ))
 
-  #;(parse (apply-lexer lex (open-input-string "<<(+ 20 20):20 y:20>>")))
-  #;(apply-lexer lex (open-input-string "<<(+ 20 10):20 30:40>>"))
-  #;(apply-lexer lex (open-input-string "<<(+ 20 10):20 30:40>>"))
-  ;; (parse (apply-lexer lex (open-input-string "<<(+ 20 10):30, 40:30>>")))
-  ;; (apply-lexer lex (open-input-string "(+ x 20)"))
-  ;; (parse (apply-lexer lex (open-input-string "(define x 20)")))
-  (define (tokenize ip)
-    (port-count-lines! ip)
-    (apply-lexer lex ip))
+  (define rt (make-readtable (current-readtable)
+                             #\> 'terminating-macro
+                             (λ args
+                               (error "no opening <"))
+                             #\< 'terminating-macro
+                             (λ (ch p . args)
+                               (define pk (peek-char p))
+                               (when (equal? pk #\>)
+                                 (error "no content"))
+                               ;; (define v
+                               ;;   (read p))
+                               ;; (define n (read-char p))
+                               ;; (unless (equal? #\> n)
+                               ;;   (error "wrong char:" n))
+                               ;; `(cons ,(car v) ,(cadr v))
 
-  (define (my-read port)
-    `(module mod bit-matching ,@(my-read-syntax port)))
+                               (define res (let loop ((acc '())
+                                                      (i 0))
+                                             (if (equal? (peek-char p) #\>)
+                                                 (begin
+                                                   (read-char p)
+                                                   `(bin ,@(reverse acc)))
+                                                 (let ([v (read p)])
+                                                   (loop (cons `(,(car v) ,(cadr v))
+                                                               acc)
+                                                         (add1 i))))))
+                               res)))
 
-  (define (my-read-syntax source-name port)
-    (let ([x (let loop ()
-               (let ([res (read-syntax source-name port)])
-                 (if (eof-object? res) '()
-                     (cons res
-                           (loop)))))])
-      `(module mod bit-matching ,@x))
-    #;
-    (let ((t (tokenize port)))
-      (printf "tokens : ~a\n" t)
-      (let ((p (parse t)))
-        (printf "parsed : ~a\n" p)
-        `(module mod bit-matching ,p)))))
+  (define (my-read a)
+    (parameterize ([current-readtable rt])
+      `(module anything bit-matching ,(read a))))
+  (require syntax/strip-context)
+  (define (my-read-syntax a b c d e f)
+    (define v
+      (parameterize ([current-readtable rt])
+        (let loop ()
+          (define x (read-syntax a b))
+          (if (eof-object? x)
+              empty
+              (cons x (loop))))))
+    (strip-context #`(module whatever bit-matching #,@v))))
 
 (require 'reader)
-(provide ->bytes bit-match)
+(provide ->bytes bit-match bin)
 ;(provide expr bin ->byte arg-expr to-bin read read-syntax program num identifier define)
 ;; (define x 30)
 ;; ;; (define y 1)

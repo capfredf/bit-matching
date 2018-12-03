@@ -5,7 +5,7 @@
          (for-syntax syntax/parse
                      racket/pretty))
 
-(provide bit-match ->bytes)
+(provide bit-match ->bytes bin)
 
 (define (bindings-match bvs ids)
   (let/cc k (let ([Mls (for/list ([bv bvs]
@@ -67,7 +67,6 @@
            (cond
              [(p.test mch) => rhs^]
              [else (bit-match e more ...)])))]))
-
 
 
 (define (extract bv lens)
@@ -164,6 +163,23 @@
 
 (define (zip xs ys)
   (map cons xs ys))
+
+
+
+#;
+(define-syntax (bin stx)
+  (syntax-parse stx
+    [(_ (l r) ...) #'(->bytes (list (cons l r) ...))]))
+
+(define-syntax-rule (bin (l r) ...)
+  (->bytes (list (cons l r) ...)))
+
+;; (define x 10)
+;; (define y 10)
+;; (bin (x 4) (y 4))
+
+#;
+(bin (x . 4) (y . 4))
 
 (module+ test
 
