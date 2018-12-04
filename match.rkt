@@ -43,7 +43,7 @@
     [pattern (bin (id n) ...)
              #:with test (begin
                            (define triples (bound-vars/acc #'(0 id ...)))
-                           
+
                            #`(λ (mch)
                                (let ([Mextract (extract mch (list n ...))])
                                  (and Mextract (bindings-match Mextract
@@ -56,7 +56,7 @@
 (define-syntax (bit-match stx)
   (syntax-parse stx
     [(_ e) #'(raise-syntax-error 'bit-match "no matching pattern for:" #'e)]
-    [(_ e [p:pat rhs] more ...) 
+    [(_ e [p:pat rhs] more ...)
      (with-syntax ([rhs^ (if (empty? '(p.vars ...))
                              #'(λ (_) rhs)
                              #'(λ (result)
@@ -128,6 +128,7 @@
                               (values (if (zero? move) 0 s^)
                                       (if (zero? move) (cons s^ acc) acc)
                                       (if (zero? move) 8 move)))))))
+
 
 (define (->bytes xs)
   (apply bytes
