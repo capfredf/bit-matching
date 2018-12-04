@@ -5,7 +5,7 @@
   (require (for-syntax syntax/parse))
   (provide (rename-out (my-read read)))
   (provide (rename-out (my-read-syntax read-syntax)))
-  (require "match.rkt")
+  (require "match.rkt" syntax/readerr)
   (provide bit-match ->bytes bin)
 
 
@@ -15,17 +15,10 @@
                              (λ args
                                (error "no opening <"))
                              #\< 'terminating-macro
-                             (λ (ch p . args)
+                             (λ (ch p source lineno colno pos)
                                (define pk (peek-char p))
                                (when (equal? pk #\>)
                                  (error "no content"))
-                               ;; (define v
-                               ;;   (read p))
-                               ;; (define n (read-char p))
-                               ;; (unless (equal? #\> n)
-                               ;;   (error "wrong char:" n))
-                               ;; `(cons ,(car v) ,(cadr v))
-
                                (define res (let loop ((acc '())
                                                       (i 0))
                                              (if (equal? (peek-char p) #\>)
@@ -33,9 +26,10 @@
                                                    (read-char p)
                                                    `(bin ,@(reverse acc)))
                                                  (let ([v (read p)])
-                                                   (loop (cons `(,(car v) ,(cadr v))
-                                                               acc)
-                                                         (add1 i))))))
+                                                   (match v
+                                                     [`(,a ,d) (loop (cons `(,a ,d) acc) (add1 i))]
+                                                     [else (raise-read-error (format "expected a pair (a d), got: ~v" v)
+                                                                             source lineno colno pos #f)])))))
                                res)))
 
   (define (my-read a)
