@@ -3,18 +3,21 @@
 (require rackunit
          racket/pretty
          (for-syntax syntax/parse
-                     racket/pretty))
+                     racket/pretty
+                     racket/list))
 
 (provide bit-match ->bytes bin)
 
 (define (bindings-match bvs ids)
-  (let/cc k (let ([Mls (for/list ([bv bvs]
-                                  [bv-idx (length bvs)])
-                         (let ([v (hash-ref ids bv-idx #f)])
-                           (if v (if (= (cdr v) bv) v (k #f)) (cons 'IDENT bv))))])
-              (map cdr (filter (lambda (p)
-                                 (eqv? (car p) 'IDENT))
-                               Mls)))))
+  (let/cc k
+    (let ([Mls (for/list ([bv bvs]
+                          [bv-idx (length bvs)])
+                 (let ([v (hash-ref ids bv-idx #f)])
+                   (if v (if (= (cdr v) bv) v (k #f))
+                       (cons 'IDENT bv))))])
+      (map cdr (filter (lambda (p)
+                         (eqv? (car p) 'IDENT))
+                       Mls)))))
 
 
 (define-for-syntax (bound-vars/acc stx)
@@ -42,15 +45,13 @@
                            (define triples (bound-vars/acc #'(0 id ...)))
 
                            #`(λ (mch)
-                               (let ([Mextract (extract mch '(n ...))])
+                               (let ([Mextract (extract mch (list n ...))])
                                  (and Mextract (bindings-match Mextract
                                                                (make-hash #,triples))))))
              #:with (vars ...) #`#,(filter (compose not number? syntax->datum)
                                            (syntax->list #'(id ...)))]
     ))
 
-
-(require (for-syntax racket/list))
 
 (define-syntax (bit-match stx)
   (syntax-parse stx
@@ -79,7 +80,7 @@
              [lens lens])
     (cond
       ((and (empty? lens) (= not-consumed 8)) (reverse acc))
-      ((empty? lens) #f)
+      ((or (empty? lens) (>= idx (bytes-length bv))) #f)
       (else (let* ([curr-len      (car lens)]
                    [curr-val      (or curr-val (bytes-ref bv idx))]
                    [consumed      (if (< not-consumed curr-len) not-consumed curr-len)]
