@@ -1,5 +1,4 @@
 #lang bit-matching
-
 (module+ test
   (require rackunit)
   (define x 10)
