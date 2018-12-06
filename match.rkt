@@ -1,10 +1,8 @@
 #lang racket
 
-(require rackunit
-         racket/pretty
-         (for-syntax syntax/parse
-                     racket/pretty
-                     racket/list))
+(require (for-syntax syntax/parse
+                     racket/list)
+         rackunit)
 
 (provide bit-match ->bytes bin)
 
@@ -34,8 +32,6 @@
                        #`#,(bound-vars/acc #`(#,(add1 (syntax->datum #'n)) e2 ...)))]))
 
 
-
-
 (begin-for-syntax
   (define-syntax-class pat
     #:attributes ((vars 1) (test 0))
@@ -51,7 +47,6 @@
              #:with (vars ...) #`#,(filter (compose not number? syntax->datum)
                                            (syntax->list #'(id ...)))]
     ))
-
 
 (define-syntax (bit-match stx)
   (syntax-parse stx
@@ -69,9 +64,7 @@
              [(p.test mch) => rhs^]
              [else (bit-match e more ...)])))]))
 
-
 (define (extract bv lens)
-  ;; TODO check if the sum of lens are equal to 8 * size of bv
   (let loop ([not-consumed 8]
              [curr-val #f]
              [idx 0]
@@ -80,7 +73,7 @@
              [lens lens])
     (cond
       ((and (empty? lens) (= not-consumed 8)) (reverse acc))
-      ((or (empty? lens) (>= idx (bytes-length bv))) #f)
+      ((or (empty? lens) (< (bytes-length bv) idx)) #f)
       (else (let* ([curr-len      (car lens)]
                    [curr-val      (or curr-val (bytes-ref bv idx))]
                    [consumed      (if (< not-consumed curr-len) not-consumed curr-len)]
@@ -105,54 +98,26 @@
                           idx res^ acc^
                           lens^))))))))
 
-
-#;
-(define y 1)
-#;
-(bit-match (bytes 16)
-           ((bin (y 3) (z 5)) #;y
-                                (+ y z)))
-
-
-(define ->byte (λ (xs)
-                   (apply bytes
-                          (for/fold ([s 0]
-                                     [acc '()]
-                                     [not-consumed 8]
-                                     #:result (reverse acc))
-                                    ([i xs])
-                            (define move (if (< (cdr i) not-consumed)
-                                             (- not-consumed (cdr i))
-                                             not-consumed))
-                            (let ([s^ (bitwise-and 255 (bitwise-ior (arithmetic-shift (car i) move) s))])
-                              (values (if (zero? move) 0 s^)
-                                      (if (zero? move) (cons s^ acc) acc)
-                                      (if (zero? move) 8 move)))))))
-
-
 (define (->bytes xs)
   (apply bytes
          (let loop ([s 0]
                     [acc '()]
                     [not-consumed 8]
                     [xs xs])
-           (if (empty? xs) (reverse acc)
+           (if (empty? xs)
+               (if (< not-consumed 8)
+                   (reverse (cons s acc))
+                   (reverse acc))
                (let ([i (car xs)])
-
-
                  (define consumed (if (< (cdr i) not-consumed)
                                       (cdr i)
                                       not-consumed))
-
-                 (define move
-                   (- not-consumed consumed))
-
+                 (define move (- not-consumed consumed))
                  (define mask (sub1 (expt 2 (- (cdr i) consumed))))
                  (define rem-length (- (cdr i) consumed))
                  (define mask1 (arithmetic-shift (sub1 (expt 2 consumed)) rem-length))
                  (define val (arithmetic-shift (bitwise-and (car i) mask1) (- rem-length)))
-                 (let ([s^ (bitwise-and 255 (bitwise-ior (arithmetic-shift val
-                                                                           move) s))])
+                 (let ([s^ (bitwise-and 255 (bitwise-ior (arithmetic-shift val move) s))])
                    (loop (if (zero? move) 0 s^)
                          (if (zero? move) (cons s^ acc) acc)
                          (if (zero? move) 8 move)
@@ -161,30 +126,11 @@
                              (cons (cons (bitwise-and (car i) mask) rem-length)
                                    (cdr xs))))))))))
 
-
-
-(define (zip xs ys)
-  (map cons xs ys))
-
-
-
-#;
-(define-syntax (bin stx)
-  (syntax-parse stx
-    [(_ (l r) ...) #'(->bytes (list (cons l r) ...))]))
-
 (define-syntax-rule (bin (l r) ...)
   (->bytes (list (cons l r) ...)))
 
-;; (define x 10)
-;; (define y 10)
-;; (bin (x 4) (y 4))
-
-#;
-(bin (x . 4) (y . 4))
-
 (module+ test
-
+  (define (zip xs ys) (map cons xs ys))
   (check-equal? (bit-match (->bytes '((16 . 8)))
                            ((bin (0 3) (16 5)) "dogs"))
                 "dogs")
@@ -193,20 +139,23 @@
                            ((bin (0 3) (16 5)) "cats"))
                 "cats")
   (check-equal? (->bytes (zip '(0 4 20) '(3 5 8))) (bytes 4 20))
+  ;; below are 6 tests for checking padding
+  (check-equal? (->bytes '((1 . 5))) (bytes 8))
+  (check-equal? (->bytes '((1 . 5) (1 . 7))) (bytes 8 16))
+  (check-equal? (->bytes '((2 . 3) (6 . 7))) (bytes 65 128))
+  (check-equal? (->bytes '((7 . 7) (3 . 5) (1 . 1))) (bytes 14 56))
+  (check-equal? (->bytes '((8 . 8) (14 . 9) (2 . 2))) (bytes 8 7 64))
+  (check-equal? (->bytes '((300 . 8))) (bytes 44))
+  ;;
+  (check-equal? (->bytes '((1 . 8))) (bytes 1))
   (check-equal? (->bytes (zip '(0 32 12) '(4 8 4))) (bytes 2 12))
-  ;(check-equal? (->bytes (zip '(0 32 12) '(4 8 4))) (bytes 2 12))
   (check-equal? (->bytes '((0 . 3) (16 . 5))) (bytes 16))
   (check-equal? (->bytes (zip '(0 1 16) '(4 4 8))) (bytes 1 16))
   (check-equal? (->bytes (zip '(0 34 0) '(4 9 3))) (bytes 1 16))
-
   (check-equal? (extract (bytes 16) '(3 5)) '(0 16))
   (check-equal? (extract (bytes 16) '(4 4)) '(1 0))
   (check-equal? (extract (bytes 17) '(4 4)) '(1 1))
   (check-equal? (extract (bytes 1 16) '(4 4 8)) '(0 1 16))
-
-  ;; (bytes 4 16) ==> 0000 0001 0001 0000
-  ;; 4 9 3 ==> 0000 0001000010 000
-  ;; 4 4 5 3 ==> 0000 0001 000010 000
   (check-equal? (extract (bytes 1 16) '(4 9 3)) '(0 34 0))
   (check-equal? (extract (bytes 1 16) '(4 4 5 3)) '(0 1 2 0))
   (check-equal? (bit-match (bytes 16)
@@ -217,91 +166,3 @@
                            [(bin (y 4)) y]
                            [(bin (y 4) (x 4) (z 8)) (+ y x z)])
                 17))
-;; 9
-;; len 1
-;; len 8
-#;
-(extract (bytes 1 16) '(4 4 8)) ;; 0000 0001 00010000 => 0 1 16
-;; 00010000 00000001
-;; 0001 000 000000001
-;; 0001 => not-consumed 4 ; acc '(1) ; idx 0
-;; 000 => not-consumed 1 ; acc '(0 1) ; idx 0
-;; 0  => not-consumed 0 ; acc '(0 0 1) ; idx 1
-;; 0000000 => not-consumed 0 ; acc '(1 0 1) ; idx 2
-
-#;
-(let-values ([(x y z) (extract (bytes 16 1) 4 3 9)])
-  (begin
-    (check-equal? x 1)
-    (check-equal? y 0)))
-
-;(define-values (x y z) (10 10 10))
-;
-;(bit-match (bin x 4 y 2 z 20)
-;           [(bin e1 n1 e2 n2 e3 n3) (+ e1 e2 e3)])
-#;
-(bit-match (bytes 16)
-           ((bin (x 4) (y 4)) (+ x y))) ; ==> 1
-
-
-;; (bit-match (bytes 40 10)
-;;            ((bin (x 8) (y 8)) (+ x y))) ;; ==> 50
-
-
-
-
-
-#;
-(bit-match '(bin (40 10) (200 60))
-  [(bin (y n)) y]
-  [(bin (y n) (z m)) (+ y z)])
-
-;; (check-equal? (bit-match '(bin (40 10))
-;;                          [(bin (y n)) y])
-;;               40)
-
-
-
-;
-;(bit-match '(bin 40 10)
-;  [(bin x n) n])
-
-
-;(define z 10)
-;
-;(bit-match `(bin ,z 10)
-;  [(bin x n) (add1 n)])
-;
-;(bit-match `(bin ,z 10)
-;  [(bin x n) x])
-;
-;(bit-match `(bin ,z 10)
-;  [(bin x n) (begi x n)])
-
-
-
-
-#|
-#;(define-syntax (vars->hash stx)
-  (syntax-parse stx
-    [(_ n h e) #'(if (and (symbol? e) (not (identifier? e)))
-                   h
-                   (hash-set h n #'e))]
-
-    [(_ n h e1 e2 ...)
-     #'(if (and (symbol? e1) (not (identifier? e1)))
-           (vars->hash (add1 n) h e2 ...)
-           (vars->hash (add1 n) (hash-set h n #'e1) e2 ...))]))
-
-(define-for-syntax (hasherize ids)
-    (for/hash ([ident ids]
-               [i (length ids)])
-      #;(pretty-print (list ident i))
-      (if (let ([b (identifier-binding ident)])
-            (begin #;(printf "id-binding ~v\n" b)
-                   b))
-          (values i ident)
-          (values i #f))))
-
-#;#;(define x 5)
-(identifier-binding #'x)|#
