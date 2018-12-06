@@ -29,7 +29,7 @@
                                                    (match v
                                                      [`(,a ,d) (loop (cons `(,a ,d) acc) (add1 i))]
                                                      [else (raise-read-error (format "expected a pair (a d), got: ~v" v)
-                                                                             source lineno colno pos #f)])))))
+                                                                             source lineno (+ colno 2) (+ pos 1) 1)])))))
                                res)))
 
   (define (my-read a)
