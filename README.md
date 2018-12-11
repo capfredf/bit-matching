@@ -31,4 +31,4 @@ Each `seg-pat-i` is a pattern against a semgment of a bit string. It is a pair o
 `size-pat` must be a literal number.
 
 ## Future work
-see issues
+see [issues](https://github.com/capfredf/bit-matching/issues)
