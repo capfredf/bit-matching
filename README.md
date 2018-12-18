@@ -17,7 +17,7 @@ and then
 Each `ei` is a semgment of a bit string. It is a pair of `(expr size)`. `expr` must be evaluated to a number and currently `size` must be a literal numbe and it indicates the number of bits in which the value of expr will be encoded.
 
 ```
-(define a <(1 4), (1 4)>)
+(define a <(1 4)(1 4)>)
 ;; a => (bytes 17) or (bytes #b00010001)
 ```
 
